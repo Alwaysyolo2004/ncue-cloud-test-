@@ -1,0 +1,13 @@
+# Environment & Secrets
+.env
+api.txt
+acc.txt
+
+# Python Cache
+__pycache__/
+*.py[cod]
+
+# Local Databases & Logs
+chroma_db/
+student_queries.json
+direct_questions.json
