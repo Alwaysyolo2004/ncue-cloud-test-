@@ -1,0 +1,20 @@
+[
+  {
+    "username": "prof_smith",
+    "password": "password123",
+    "role": "Professor",
+    "name": "Prof. Smith"
+  },
+  {
+    "username": "student_john",
+    "password": "password123",
+    "role": "Student",
+    "name": "John Doe"
+  },
+  {
+    "username": "student_sarah",
+    "password": "password123",
+    "role": "Student",
+    "name": "Sarah Lee"
+  }
+]
