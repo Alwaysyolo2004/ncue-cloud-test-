@@ -37,9 +37,9 @@ def register_user(username, password, name, role="Student"):
         # Cek apakah username sudah ada
         for user in users:
             if user["username"] == username.strip():
-                return False, "Username sudah digunakan. Silakan pilih username lain."
+                return False, "Username already in Used please Change into another name"
         
-        # Tambahkan user baru (default role adalah Student)
+        # (default role adalah Student)
         new_user = {
             "username": username.strip(),
             "password": password.strip(),
@@ -51,8 +51,27 @@ def register_user(username, password, name, role="Student"):
         with open(USERS_FILE, "w", encoding="utf-8") as f:
             json.dump(users, f, ensure_ascii=False, indent=2)
             
-        return True, "Registrasi berhasil! Silakan pindah ke tab Sign In untuk masuk."
+        return True, "Sign in Succced please proceed to log in section"
     except Exception as e:
-        return False, f"Terjadi kesalahan: {str(e)}"
+        return False, f"Error: {str(e)}"
+
+def update_user_password(username, new_password):
+    """change password for OTP security"""
+    try:
+        with open("users.json", "r", encoding="utf-8") as f:
+            users = json.load(f)
+        
+        for user in users:
+            if user["username"] == username:
+                user["password"] = new_password.strip()
+                user["must_change_password"] = False # status false
+                break
+                
+        with open("users.json", "w", encoding="utf-8") as f:
+            json.dump(users, f, ensure_ascii=False, indent=2)
+            
+        return True, "Success CHnage the Password"
+    except Exception as e:
+        return False, f"Failed to Change the Password: {str(e)}"
 
         
