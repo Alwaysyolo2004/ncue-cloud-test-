@@ -9,7 +9,7 @@ import streamlit as st
 from backend import load_rag_pipeline, ask_rag, process_uploaded_pdf, save_professor_answer
 from analytics import log_query, get_query_analytics
 from qa_manager import submit_direct_question, get_qa_list, update_qa_answer
-from auth import authenticate_user, register_user  # import Account 
+from auth import authenticate_user, register_user, update_user_password  # import update_user_password 
 
 st.set_page_config(page_title="NCUE AI Academic Portal", page_icon="🎓", layout="wide")
 
@@ -25,7 +25,7 @@ if not st.session_state.authenticated:
     st.caption("portal akademik for student and proffesor")
     
     # pendaftran akun/ new account
-    tab_login, tab_register = st.tabs(["🔑 Log In ", " Sign In "])
+    tab_login, tab_register = st.tabs(["🔑 Log In ", " 📝 Register "])
     
     with tab_login:
         with st.form("login_form"):
@@ -42,11 +42,11 @@ if not st.session_state.authenticated:
                     st.success(f"welcome back, {user['name']}!")
                     st.rerun()
                 else:
-                    st.error("Wrong Username or Password (capslock have affect")
+                    st.error("Wrong Username or Password (capslock have affect)")
                     
-   with tab_register:
+    with tab_register:
         with st.form("register_form"):
-            st.subheader("Make New Account")
+            st.subheader("Make New Account (Student)")
             reg_name = st.text_input("Nama :")
             reg_username = st.text_input("Username:")
             reg_password = st.text_input("Password:", type="password")
@@ -68,10 +68,35 @@ if not st.session_state.authenticated:
                         st.success(message)
                     else:
                         st.error(message)
-                else:
-                    st.warning("Please Fill the Form Completely")
-                    
+                        
     st.stop()  
+
+# ==================== FORCE PASSWORD CHANGE (SECURITY CHECK) ====================
+# Jika user sudah login, tapi statusnya wajib ganti password (akun dibuat admin)
+if st.session_state.authenticated and st.session_state.user.get("must_change_password", False):
+    st.title("🔒 Security Check: Change Temporary Password")
+    st.warning("Halo! Ini adalah login pertama Anda dengan password sementara dari admin. Silakan ubah password Anda demi keamanan.")
+    
+    with st.form("change_temp_password_form"):
+        new_pass = st.text_input("New Password:", type="password")
+        confirm_new_pass = st.text_input("Confirm New Password:", type="password")
+        change_btn = st.form_submit_button("Update Password")
+        
+        if change_btn:
+            if not new_pass or not confirm_new_pass:
+                st.warning("Please fill in all fields.")
+            elif new_pass != confirm_new_pass:
+                st.error("New passwords do not match!")
+            else:
+                success, msg = update_user_password(st.session_state.user["username"], new_pass)
+                if success:
+                    st.success("Password updated successfully! Please log in again with your new password.")
+                    st.session_state.authenticated = False
+                    st.session_state.user = None
+                    st.rerun()
+                else:
+                    st.error(msg)
+    st.stop()
 
 # Load Backend RAG Engine
 @st.cache_resource
@@ -300,5 +325,3 @@ else:
                     st.success(f"Successfully published verified answer for '{keyword_input}'!")
                 else:
                     st.warning("Please fill in both fields.")
-
-    
