@@ -27,7 +27,7 @@
     "role": "Student",
     "name": "John Doe",
     "must_change_password": false
-  }
+  },
   {
     "username": "student_sarah",
     "password": "password123",
