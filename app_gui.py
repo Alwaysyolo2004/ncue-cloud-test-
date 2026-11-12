@@ -44,16 +44,25 @@ if not st.session_state.authenticated:
                 else:
                     st.error("Wrong Username or Password (capslock have affect")
                     
-    with tab_register:
+   with tab_register:
         with st.form("register_form"):
             st.subheader("Make New Account")
             reg_name = st.text_input("Nama :")
             reg_username = st.text_input("Username:")
             reg_password = st.text_input("Password:", type="password")
+            reg_Cpassword = st.text_input("Confirm Password:", type="password")
+            
             reg_btn = st.form_submit_button("Daftar")
             
             if reg_btn:
-                if reg_name and reg_username and reg_password:
+                # 1. Cek apakah ada kolom yang kosong
+                if not reg_name or not reg_username or not reg_password or not reg_Cpassword:
+                    st.warning("Mohon isi semua kolom pendaftaran!")
+                
+                elif reg_password != reg_Cpassword:
+                    st.error("Password tidak cocok! Silakan periksa kembali.")
+                
+                else:
                     success, message = register_user(reg_username, reg_password, reg_name, role="Student")
                     if success:
                         st.success(message)
