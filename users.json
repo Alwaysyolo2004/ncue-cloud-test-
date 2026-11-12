@@ -12,7 +12,7 @@
     "password": "WrfDfjO",
     "role": "Professor",
     "name": "Prof 資閔",
-    "must_change_password": true
+    "must_change_password": false
   },
   {
     "username": "prof_smith",
