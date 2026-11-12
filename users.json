@@ -1,16 +1,33 @@
 [
   {
+    "__comment__": "=== TEMPAT MEMBUAT AKUN PROFESSOR BARU (Wajib ganti password pertama login) ===",
+    "username": "contoh_prof",
+    "password": "temp_password_123",
+    "role": "Professor",
+    "name": "Prof. Contoh",
+    "must_change_password": true
+  },
+  {
+    "username": "資閔老師",
+    "password": "WrfDfjO",
+    "role": "Professor",
+    "name": "Prof 資閔",
+    "must_change_password": true
+  },
+  {
     "username": "prof_smith",
     "password": "password123",
     "role": "Professor",
-    "name": "Prof. Smith"
+    "name": "Prof. Smith",
+    "must_change_password": false
   },
   {
     "username": "student_john",
     "password": "password123",
     "role": "Student",
-    "name": "John Doe"
-  },
+    "name": "John Doe",
+    "must_change_password": false
+  }
   {
     "username": "student_sarah",
     "password": "password123",
