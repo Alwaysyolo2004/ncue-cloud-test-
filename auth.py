@@ -26,3 +26,33 @@ def authenticate_user(username, password):
     except Exception:
         return None
     return None
+
+def register_user(username, password, name, role="Student"):
+    """Mendaftarkan akun baru dan menyimpannya ke users.json."""
+    init_users_file()
+    try:
+        with open(USERS_FILE, "r", encoding="utf-8") as f:
+            users = json.load(f)
+        
+        # Cek apakah username sudah ada
+        for user in users:
+            if user["username"] == username.strip():
+                return False, "Username sudah digunakan. Silakan pilih username lain."
+        
+        # Tambahkan user baru (default role adalah Student)
+        new_user = {
+            "username": username.strip(),
+            "password": password.strip(),
+            "role": role,
+            "name": name.strip()
+        }
+        users.append(new_user)
+        
+        with open(USERS_FILE, "w", encoding="utf-8") as f:
+            json.dump(users, f, ensure_ascii=False, indent=2)
+            
+        return True, "Registrasi berhasil! Silakan pindah ke tab Sign In untuk masuk."
+    except Exception as e:
+        return False, f"Terjadi kesalahan: {str(e)}"
+
+        
