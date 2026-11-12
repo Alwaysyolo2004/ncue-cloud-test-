@@ -9,7 +9,7 @@ import streamlit as st
 from backend import load_rag_pipeline, ask_rag, process_uploaded_pdf, save_professor_answer
 from analytics import log_query, get_query_analytics
 from qa_manager import submit_direct_question, get_qa_list, update_qa_answer
-from auth import authenticate_user
+from auth import authenticate_user, register_user  # Pastikan register_user di-import
 
 st.set_page_config(page_title="NCUE AI Academic Portal", page_icon="🎓", layout="wide")
 
@@ -19,27 +19,50 @@ if "authenticated" not in st.session_state:
 if "user" not in st.session_state:
     st.session_state.user = None
 
-# ==================== LOGIN SCREEN ====================
+# ==================== LOGIN & REGISTER SCREEN ====================
 if not st.session_state.authenticated:
-    st.title("🎓 NCUE AI Academic Portal - Login")
-    st.caption("Please sign in to access your course portal or instructor dashboard.")
+    st.title("🎓 NCUE AI Academic Portal")
+    st.caption("Akses portal akademik pintar berbasis RAG untuk mahasiswa dan dosen.")
     
-    with st.form("login_form"):
-        username_input = st.text_input("Username (e.g., student_john or prof_smith):")
-        password_input = st.text_input("Password:", type="password")
-        login_btn = st.form_submit_button("Sign In")
-        
-        if login_btn:
-            user = authenticate_user(username_input, password_input)
-            if user:
-                st.session_state.authenticated = True
-                st.session_state.user = user
-                st.success(f"Welcome back, {user['name']}!")
-                st.rerun()
-            else:
-                st.error("Invalid username or password. (Hint: Try username 'student_john' and password 'password123')")
+    # Membuat Tab untuk Login dan Pendaftaran Akun Baru
+    tab_login, tab_register = st.tabs(["🔑 Sign In (Masuk)", "📝 Register (Daftar Akun Mahasiswa)"])
     
-    st.stop()
+    with tab_login:
+        with st.form("login_form"):
+            st.subheader("Masuk ke Akun Anda")
+            username_input = st.text_input("Username:")
+            password_input = st.text_input("Password:", type="password")
+            login_btn = st.form_submit_button("Sign In")
+            
+            if login_btn:
+                user = authenticate_user(username_input, password_input)
+                if user:
+                    st.session_state.authenticated = True
+                    st.session_state.user = user
+                    st.success(f"Selamat datang kembali, {user['name']}!")
+                    st.rerun()
+                else:
+                    st.error("Username atau password salah.")
+                    
+    with tab_register:
+        with st.form("register_form"):
+            st.subheader("Buat Akun Mahasiswa Baru")
+            reg_name = st.text_input("Nama Lengkap:")
+            reg_username = st.text_input("Buat Username:")
+            reg_password = st.text_input("Buat Password:", type="password")
+            reg_btn = st.form_submit_button("Daftar Sekarang")
+            
+            if reg_btn:
+                if reg_name and reg_username and reg_password:
+                    success, message = register_user(reg_username, reg_password, reg_name, role="Student")
+                    if success:
+                        st.success(message)
+                    else:
+                        st.error(message)
+                else:
+                    st.warning("Mohon isi semua kolom pendaftaran.")
+                    
+    st.stop()  # Menghentikan eksekusi sampai user berhasil login
 
 # Load Backend RAG Engine
 @st.cache_resource
@@ -268,3 +291,5 @@ else:
                     st.success(f"Successfully published verified answer for '{keyword_input}'!")
                 else:
                     st.warning("Please fill in both fields.")
+
+    
