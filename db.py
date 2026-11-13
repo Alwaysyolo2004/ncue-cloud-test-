@@ -105,14 +105,14 @@ def get_user(username: str):
     return dict(row) if row else None
 
 
-def upsert_user(username: str, password_hash: str, role: str, name: str):
+def upsert_user(username: str, password_hash: str, role: str, name: str, must_change_password: int = 0):
     with _conn() as c:
         c.execute(
-            """INSERT INTO users (username, password_hash, role, name) VALUES (?, ?, ?, ?)
+            """INSERT INTO users (username, password_hash, role, name, must_change_password) VALUES (?, ?, ?, ?, ?)
                ON CONFLICT(username) DO UPDATE SET password_hash = excluded.password_hash,
-               role = excluded.role, name = excluded.name""",
-            (username, password_hash, role, name),
-        )
+               role = excluded.role, name = excluded.name, must_change_password = excluded.must_change_password""",
+            (username, password_hash, role, name, must_change_password),
+        )"""fitur change passord utk new account """
 
 
 def list_users():
