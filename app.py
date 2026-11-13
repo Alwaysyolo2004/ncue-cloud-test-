@@ -1,372 +1,327 @@
 # ==============================================================================
 # Project: NCUE AI Academic Portal
-# Author: Michael Octavianus Henlianto Muliaba & Team
+# Author: Michael Octavianus Henlianto Muliaba
+# Date: October 2026
 # Description: Dual-role RAG Academic Assistant with Professor Analytics
-# v2 Optimized + Self-Registration & Force Password Change Workflow
 # ==============================================================================
 
-import time
-
-import pandas as pd
 import streamlit as st
+from backend import load_rag_pipeline, ask_rag, process_uploaded_pdf, save_professor_answer
+from analytics import log_query, get_query_analytics
+from qa_manager import submit_direct_question, get_qa_list, update_qa_answer
+from auth import authenticate_user, register_user, update_user_password  # import update_user_password 
 
 st.set_page_config(page_title="NCUE AI Academic Portal", page_icon="🎓", layout="wide")
 
-import auth
-import config
-import db
-import rag
+# Initialize Session State for Authentication
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+if "user" not in st.session_state:
+    st.session_state.user = None
 
-db.init_db()
-auth.seed_users()
-
-WATERMARK_HTML = """
-    <style>
-    .hidden-watermark {
-        color: transparent; /* Makes text completely invisible by default */
-        font-size: 0.40rem;
-        text-align: center;
-        padding: 4px;
-        border-radius: 2px;
-        transition: all 0.3s ease;
-        user-select: none; /* Prevents accidental highlighting when clicking */
-    }
-    .hidden-watermark:hover {
-        color: #FFD700; /* Text turns gold when the cursor points directly at it */
-        background-color: rgba(255, 255, 255, 0.05);
-        font-weight: bold;
-    }
-    </style>
-
-    <div class="hidden-watermark">
-        🔑 Unique ID: NCUE-2026-MOHM-8839<br>
-        Authd 龍021-112
-    </div>
-"""
-
-SOURCE_LABELS = {"professor": "⭐ 教授答案", "handout": "📄 講義", "general": "🌐 講義未涵蓋", "error": "⚠️ 錯誤"}
-MAX_LOGIN_FAILS, LOCK_SECONDS = 5, 60
-
-
-# ==================== shared resources ====================
-if not config.GOOGLE_API_KEY:
-    st.error("GOOGLE_API_KEY 未設定。本機請寫在 `.env`，雲端請填在部署平台的 Secrets / Environment variables。")
-    st.stop()
-
-
-@st.cache_resource(show_spinner="載入講義向量庫…")
-def get_vectorstore():
-    return rag.get_vectorstore()
-
-
-@st.cache_resource
-def get_llm():
-    return rag.get_llm()
-
-
-def render_sources(docs):
-    if docs:
-        with st.expander(f"📌 引用的講義片段（{len(docs)}）"):
-            for i, d in enumerate(docs, 1):
-                st.markdown(f"**[{i}] {d['source']} · p.{d['page']}**")
-                st.caption(d["text"])
-
-
-# ==================== session ====================
-for key, default in {"authenticated": False, "user": None, "login_fails": 0, "lock_until": 0.0}.items():
-    st.session_state.setdefault(key, default)
-
-
-# ==================== LOGIN / REGISTRATION SCREEN ====================
+# ==================== LOGIN & REGISTER SCREEN ====================
 if not st.session_state.authenticated:
-    st.title("🎓 NCUE AI Academic Portal - Login")
-    st.caption("Please sign in to access your course portal or instructor dashboard.")
-    if config.DEMO_MODE:
-        st.info("Demo 帳號：`student_john`、`student_sarah`、`prof_smith`（密碼請向組員索取）")
-
-    remaining = int(st.session_state.lock_until - time.time())
+    st.title("🎓 NCUE AI Academic Portal")
+    st.caption("portal akademik for student and proffesor")
     
-    # 建立登入與註冊的分页 (Tabs)
-    tab_login, tab_register = st.tabs(["🔑 Sign In", "📝 Register (Students)"])
+    # pendaftran akun/ new account
+    tab_login, tab_register = st.tabs(["🔑 Log In ", " 📝 Register "])
     
     with tab_login:
         with st.form("login_form"):
+            st.subheader("Enter your acccount")
             username_input = st.text_input("Username:")
             password_input = st.text_input("Password:", type="password")
-            login_btn = st.form_submit_button("Sign In", disabled=remaining > 0)
-
-        if remaining > 0:
-            st.warning(f"登入失敗次數過多，請 {remaining} 秒後再試。")
-        elif login_btn:
-            user = auth.authenticate(username_input.strip(), password_input)
-            if user:
-                st.session_state.update(authenticated=True, user=user, login_fails=0)
-                st.rerun()
-            st.session_state.login_fails += 1
-            if st.session_state.login_fails >= MAX_LOGIN_FAILS:
-                st.session_state.update(lock_until=time.time() + LOCK_SECONDS, login_fails=0)
-            st.error("帳號或密碼錯誤。")
+            login_btn = st.form_submit_button("Sign In")
             
+            if login_btn:
+                user = authenticate_user(username_input, password_input)
+                if user:
+                    st.session_state.authenticated = True
+                    st.session_state.user = user
+                    st.success(f"welcome back, {user['name']}!")
+                    st.rerun()
+                else:
+                    st.error("Wrong Username or Password (capslock have affect)")
+                    
     with tab_register:
-        st.write("填寫下方表單以註冊新的學生帳號：")
         with st.form("register_form"):
-            reg_username = st.text_input("Choose Username:")
-            reg_name = st.text_input("Full Name:")
+            st.subheader("Make New Account (Student)")
+            reg_name = st.text_input("Nama :")
+            reg_username = st.text_input("Username:")
             reg_password = st.text_input("Password:", type="password")
-            reg_password_confirm = st.text_input("Confirm Password:", type="password")
-            reg_btn = st.form_submit_button("Create Account")
+            reg_Cpassword = st.text_input("Confirm Password:", type="password")
+            
+            reg_btn = st.form_submit_button("Register")
             
             if reg_btn:
-                if reg_password != reg_password_confirm:
-                    st.error("兩次輸入的密碼不一致。")
+                # 1. Cek apakah ada kolom yang kosong
+                if not reg_name or not reg_username or not reg_password or not reg_Cpassword:
+                    st.warning("please fill the form")
+                
+                elif reg_password != reg_Cpassword:
+                    st.error("password not confirmed, please check the password again")
+                
                 else:
-                    try:
-                        auth.register_student(reg_username, reg_password, reg_name)
-                        st.success("註冊成功！請切換至「Sign In」頁面登入您的帳號。")
-                    except Exception as e:
-                        st.error(f"註冊失敗：{e}")
+                    success, message = register_user(reg_username, reg_password, reg_name, role="Student")
+                    if success:
+                        st.success(message)
+                    else:
+                        st.error(message)
                         
-    st.stop()
+    st.stop()  
 
-
-current_user = st.session_state.user
-
-# ==================== FORCE PASSWORD CHANGE WORKFLOW ====================
-if current_user.get("must_change_password", 0) == 1:
-    st.title("🔐 強制修改密碼 (Security Update)")
-    st.warning("這是系統指派的暫時密碼。基於資安考量，您必須先修改密碼才能進入系統。")
+# ==================== FORCE PASSWORD CHANGE (SECURITY CHECK) ====================
+# Jika user sudah login, tapi statusnya wajib ganti password (akun dibuat admin)
+if st.session_state.authenticated and st.session_state.user.get("must_change_password", False):
+    st.title("🔒 Security Check: Change Temporary Password")
+    st.warning("Welcome Professor, please change your account password into your personal preference")
     
-    with st.form("force_change_pwd_form"):
-        new_pwd = st.text_input("新密碼 (至少 6 碼):", type="password")
-        confirm_pwd = st.text_input("確認新密碼:", type="password")
-        change_btn = st.form_submit_button("確認修改並進入系統")
+    with st.form("change_temp_password_form"):
+        new_pass = st.text_input("New Password:", type="password")
+        confirm_new_pass = st.text_input("Confirm New Password:", type="password")
+        change_btn = st.form_submit_button("Update Password")
         
         if change_btn:
-            if new_pwd != confirm_pwd:
-                st.error("兩次輸入的新密碼不一致。")
-            elif len(new_pwd) < 6:
-                st.error("新密碼長度至少需要 6 碼。")
+            if not new_pass or not confirm_new_pass:
+                st.warning("Please fill in all fields.")
+            elif new_pass != confirm_new_pass:
+                st.error("New passwords do not match!")
             else:
-                try:
-                    auth.update_password(current_user["username"], new_pwd)
-                    # 更新 session 中的 user 狀態，解除強制改密碼鎖
-                    updated_user = db.get_user(current_user["username"])
-                    st.session_state.user = {k: updated_user[k] for k in ("username", "role", "name", "must_change_password")}
-                    st.success("密碼修改成功！正在進入系統...")
+                success, msg = update_user_password(st.session_state.user["username"], new_pass)
+                if success:
+                    st.success("Password updated successfully! Please log in again with your new password.")
+                    st.session_state.authenticated = False
+                    st.session_state.user = None
                     st.rerun()
-                except Exception as e:
-                    st.error(f"修改失敗：{e}")
+                else:
+                    st.error(msg)
     st.stop()
 
+# Load Backend RAG Engine
+@st.cache_resource
+def init_backend():
+    return load_rag_pipeline()
 
+retriever, llm = init_backend()
+current_user = st.session_state.user
 role = current_user["role"]
-is_anonymous = False
 
 # ==================== SIDEBAR CONFIGURATION ====================
 with st.sidebar:
     st.header(f"👤 {current_user['name']}")
     st.caption(f"Role: {role}")
+    
     if st.button("Log Out", use_container_width=True):
-        for k in list(st.session_state.keys()):
-            del st.session_state[k]
+        st.session_state.authenticated = False
+        st.session_state.user = None
         st.rerun()
+        
     st.divider()
+    st.markdown("""
+        <style>
+        .hidden-watermark {
+            color: transparent; /* Makes text completely invisible by default */
+            font-size: 0.40rem;
+            text-align: center;
+            padding: 4px;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+            user-select: none; /* Prevents accidental highlighting when clicking */
+        }
+        .hidden-watermark:hover {
+            color: #FFD700; /* Text turns gold when the cursor points directly at it */
+            background-color: rgba(255, 255, 255, 0.05);
+            font-weight: bold;
+        }
+        </style>
+        
+        <div class="hidden-watermark">
+            🔑 Unique ID: NCUE-2026-MOHM-8839<br>
+            Authd 龍021-112
+        </div>
+    """, unsafe_allow_html=True)
 
+    course_list = ["General Handouts", "Operating Systems", "Computer Architecture", "Data Structures"]
+    
     if role == "Professor":
         st.header("⚙️ Professor Controls")
-        course = st.selectbox("Select Analytics Filter:", [config.ALL_COURSES] + config.COURSES)
+        course = st.selectbox("Select Analytics Filter:", ["All Courses"] + course_list)
     else:
         st.header("⚙️ Student Portal")
-        course = st.selectbox("Select Course:", config.COURSES)
+        course = st.selectbox("Select Course:", course_list)
+        
         st.divider()
         st.subheader("🕶️ Privacy Settings")
         is_anonymous = st.checkbox("Submit queries anonymously", value=False)
         st.caption("Applies to both AI chat logs and direct professor questions.")
+        
+        st.divider()
+        st.subheader("📄 Handout Management")
+        uploaded_file = st.file_uploader("Upload course PDF:", type=["pdf"])
+        if uploaded_file is not None:
+            if st.button("Process & Index Handout", use_container_width=True):
+                with st.spinner("Analyzing and embedding PDF..."):
+                    chunk_count = process_uploaded_pdf(uploaded_file)
+                    st.success(f"Indexed {chunk_count} chunks into {course}!")
+                    st.cache_resource.clear()
 
-    st.divider()
-    st.markdown(WATERMARK_HTML, unsafe_allow_html=True)
-
+        st.markdown("""
+        <style>
+        .hidden-watermark {
+            color: transparent; /* Makes text completely invisible by default */
+            font-size: 0.40rem;
+            text-align: center;
+            padding: 4px;
+            border-radius: 2px;
+            transition: all 0.3s ease;
+            user-select: none; /* Prevents accidental highlighting when clicking */
+        }
+        .hidden-watermark:hover {
+            color: #FFD700; /* Text turns gold when the cursor points directly at it */
+            background-color: rgba(255, 255, 255, 0.05);
+            font-weight: bold;
+        }
+        </style>
+        
+        <div class="hidden-watermark">
+            🔑 Unique ID: NCUE-2026-MOHM-8839<br>
+            Authd 龍021-112
+        </div>
+    """, unsafe_allow_html=True)
 
 # ==================== VIEW 1: STUDENT PORTAL ====================
-def student_view():
+if role == "Student":
     st.title(f"📚 {course} Study Assistant")
+    
+    # Sub-tabs for AI Chat vs Office Hours Q&A
     tab_chat, tab_office_hours = st.tabs(["💬 AI Handout Chat", "📬 Office Hours & Professor Q&A"])
-
+    
     with tab_chat:
         st.caption("Ask questions about lecture notes, exam prep, or coding handouts.")
-        chat_key = f"chat::{current_user['username']}::{course}"  # 每門課各自一段對話
-        history = st.session_state.setdefault(chat_key, [])
+        chat_key = f"messages_{current_user['username']}"
+        if chat_key not in st.session_state:
+            st.session_state[chat_key] = []
 
-        for message in history:
+        for message in st.session_state[chat_key]:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
-                render_sources(message.get("docs"))
+                if "docs" in message and message["docs"]:
+                    with st.expander("📌 View Retrieved Handout Context"):
+                        for idx, doc in enumerate(message["docs"], 1):
+                            st.markdown(f"**Chunk {idx}:**")
+                            st.caption(doc.page_content)
 
-        user_query = st.chat_input("Ask a question about this course...")
-        if user_query and user_query.strip():
-            user_query = user_query.strip()[: config.MAX_QUERY_CHARS]
+        if user_query := st.chat_input("Ask a question about this course..."):
+            log_query(course, user_query, current_user["username"], is_anonymous)
+            st.session_state[chat_key].append({"role": "user", "content": user_query})
             with st.chat_message("user"):
                 st.markdown(user_query)
+
             with st.chat_message("assistant"):
                 with st.spinner("Searching course knowledge base..."):
-                    result = rag.answer_question(get_llm(), get_vectorstore(), user_query, course, history)
-                st.markdown(result["answer"])
-                render_sources(result["docs"])
-            db.log_query(course, user_query, current_user["username"], is_anonymous, result["source"])
-            history.append({"role": "user", "content": user_query})
-            history.append({"role": "assistant", "content": result["answer"], "docs": result["docs"]})
+                    answer, docs = ask_rag(retriever, llm, user_query)
+                    st.markdown(answer)
+                    if docs:
+                        with st.expander("📌 View Retrieved Handout Context"):
+                            for idx, doc in enumerate(docs, 1):
+                                st.markdown(f"**Chunk {idx}:**")
+                                st.caption(doc.page_content)
+                    st.session_state[chat_key].append({"role": "assistant", "content": answer, "docs": docs})
 
     with tab_office_hours:
         st.subheader("📬 Direct Office Hours Q&A")
-        st.write("Send a private question to your professor. Answers the professor pins appear below for everyone.")
-        with st.form("direct_q_form", clear_on_submit=True):
-            direct_question = st.text_area("Your Direct Question to the Professor:", max_chars=config.MAX_QUERY_CHARS)
-            if st.form_submit_button("Submit Direct Question"):
-                if direct_question.strip():
-                    db.submit_direct_question(course, direct_question, current_user["username"], is_anonymous)
-                    st.success("Your question has been sent to the professor!")
+        st.write("Send a private or direct question to your professor regarding course material. You can also view highlighted professor answers below.")
+        
+        with st.form("direct_q_form"):
+            direct_question = st.text_area("Your Direct Question to the Professor:")
+            submit_direct = st.form_submit_button("Submit Direct Question")
+            if submit_direct:
+                if direct_question:
+                    submit_direct_question(course, direct_question, current_user["username"], is_anonymous)
+                    st.success("Your question has been sent directly to the professor!")
                 else:
                     st.warning("Please type a question before submitting.")
-
-        mine = db.list_my_questions(current_user["username"], course)
-        if mine:
-            with st.expander(f"🗂️ 我的提問（{len(mine)}）"):
-                for q in mine:
-                    badge = "✅" if q["status"] == "Answered" else "⏳"
-                    tag = "（匿名）" if q["is_anonymous"] else ""
-                    st.markdown(f"{badge} **{q['question']}** {tag}")
-                    st.caption(q["ts"])
-                    if q["answer"]:
-                        st.info(q["answer"])
-
+        
         st.divider()
         st.subheader("⭐ Highlighted & Answered Q&A Feed")
-        pinned = db.list_direct_questions(course, highlighted_only=True)
-        if pinned:
-            for item in pinned:
+        qa_items = get_qa_list(course)
+        highlighted_items = [q for q in qa_items if q["is_highlighted"]]
+        
+        if highlighted_items:
+            for item in highlighted_items:
                 with st.container(border=True):
                     st.markdown(f"**Q: {item['question']}**")
-                    st.caption(item["answered_ts"] or item["ts"])  # 公開區不顯示提問者
+                    st.caption(f"Asked by: {item['student']} | {item['timestamp']}")
                     st.info(f"**Professor's Answer:**\n\n{item['answer']}")
         else:
             st.info("No highlighted professor Q&As for this course yet.")
 
-
 # ==================== VIEW 2: PROFESSOR DASHBOARD ====================
-def professor_view():
+else:
     st.title("👨‍🏫 Instructor Teaching Analytics & Office Hours Manager")
-    tab_analytics, tab_direct, tab_verified, tab_handouts = st.tabs(
-        ["📊 Analytics & Top FAQs", "📬 Direct Student Inquiries", "⭐ Verified RAG Overrides", "📄 Handouts"])
-
+    
+    tab_analytics, tab_direct_qa, tab_verified = st.tabs(["📊 Analytics & Top FAQs", "📬 Direct Student Inquiries", "⭐ Verified RAG Overrides"])
+    
+    analytics = get_query_analytics(course)
+    
     with tab_analytics:
-        a = db.query_analytics(course)
-        src = a["by_source"]
-        c1, c2, c3, c4 = st.columns(4)
-        c1.metric("Total AI Queries", a["total"])
-        c2.metric("Distinct Askers", a["askers"])
-        c3.metric("Answered by Your Overrides", src.get("professor", 0))
-        c4.metric("Not Covered by Handouts", src.get("general", 0),
-                  help="AI 判斷講義資訊不足、改用一般知識回答的次數 → 講義可能需要補充")
-
-        if a["daily"]:
-            st.subheader("📈 Daily Questions")
-            st.bar_chart(pd.DataFrame(a["daily"]).set_index("day"))
-
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric(label="Total AI Queries Logged", value=analytics["total_queries"])
+        with col2:
+            st.metric(label="Active Course Filter", value=course)
+            
+        st.divider()
         st.subheader("🔥 Top Frequently Asked Questions (AI)")
-        if a["top"]:
-            st.dataframe(pd.DataFrame(a["top"]), use_container_width=True, hide_index=True)
+        if analytics["top_queries"]:
+            for query_text, count in analytics["top_queries"]:
+                st.info(f"**Question:** \"{query_text}\" — **Asked {count} time(s)**")
         else:
             st.write("No query activity logged yet.")
 
-        st.subheader("🕳️ Questions the Handouts Didn't Cover")
-        if a["gaps"]:
-            st.dataframe(pd.DataFrame(a["gaps"]), use_container_width=True, hide_index=True)
+        st.divider()
+        st.subheader("📜 Recent Activity Audit Log")
+        if analytics["logs"]:
+            st.dataframe(analytics["logs"], use_container_width=True)
         else:
-            st.caption("目前沒有講義未涵蓋的問題。")
+            st.write("No recent logs found.")
 
-        with st.expander("📜 Recent Activity Audit Log"):
-            if a["logs"]:
-                df = pd.DataFrame(a["logs"])
-                df["answered_from"] = df["answered_from"].map(SOURCE_LABELS).fillna(df["answered_from"])
-                st.dataframe(df, use_container_width=True, hide_index=True)
-                st.download_button("下載 CSV", df.to_csv(index=False).encode("utf-8-sig"),
-                                   file_name="query_log.csv", mime="text/csv")
-            else:
-                st.write("No recent logs found.")
-
-    with tab_direct:
+    with tab_direct_qa:
         st.subheader("📬 Student Direct Questions & Office Hours Inquiries")
-        pending_only = st.toggle("只顯示待回覆", value=True)
-        qa_list = db.list_direct_questions(course, pending_only=pending_only)
-        if not qa_list:
-            st.write("No direct student inquiries found.")
-        for item in qa_list:
-            with st.container(border=True):
-                st.markdown(f"**Course:** {item['course']} | **Student:** {item['student']} ({item['ts']}) "
-                            f"| **Status:** {item['status']}")
-                st.markdown(f"**Question:** {item['question']}")
-                with st.form(key=f"answer_form_{item['id']}"):
-                    ans = st.text_area("Your Official Reply:", value=item["answer"])
-                    pin = st.checkbox("⭐ Highlight/Pin this Q&A for all students", value=bool(item["is_highlighted"]))
-                    if st.form_submit_button("Send Reply & Update"):
-                        if pin and not ans.strip():
-                            st.warning("要先填回覆才能置頂。")
-                        else:
-                            db.answer_direct_question(item["id"], ans, pin)
+        st.write("Review personal questions sent by students. You can reply and check **'Highlight for Students'** to pin the answer to the course feed.")
+        
+        qa_list = get_qa_list(course)
+        if qa_list:
+            for item in qa_list:
+                with st.container(border=True):
+                    st.markdown(f"**Course:** {item['course']} | **Student:** {item['student']} ({item['timestamp']})")
+                    st.markdown(f"**Question:** {item['question']}")
+                    
+                    with st.form(key=f"answer_form_{item['id']}"):
+                        ans_input = st.text_area("Your Official Reply:", value=item["answer"])
+                        highlight_toggle = st.checkbox("⭐ Highlight/Pin this Q&A for all students", value=item["is_highlighted"])
+                        reply_btn = st.form_submit_button("Send Reply & Update")
+                        
+                        if reply_btn:
+                            update_qa_answer(item["id"], ans_input, highlight_toggle)
+                            st.success("Reply saved!")
                             st.rerun()
+        else:
+            st.write("No direct student inquiries found.")
 
     with tab_verified:
         st.subheader("⭐ Publish Professor Verified Answer (RAG Override)")
-        st.write("學生提問包含關鍵字時，直接回傳你的答案（多個命中時取最長、最具體的關鍵字）。")
-        with st.form("prof_answer_form", clear_on_submit=True):
-            target = st.selectbox("適用課程", [config.ALL_COURSES] + config.COURSES,
-                                  index=0 if course == config.ALL_COURSES else config.COURSES.index(course) + 1)
-            keyword = st.text_input("Target Keyword or Question Phrase (e.g., 'batch system', '位元運算'):")
-            answer = st.text_area("Official Definitive Answer:")
-            if st.form_submit_button("Publish Verified Answer"):
-                if keyword.strip() and answer.strip():
-                    db.upsert_verified_answer(target, keyword, answer)
-                    st.success(f"已發布「{keyword.strip()}」的教授答案（同課程同關鍵字會覆蓋舊的）。")
+        st.write("Add an official answer that takes absolute priority when students ask matching questions in the AI chat.")
+        
+        with st.form("prof_answer_form"):
+            keyword_input = st.text_input("Target Keyword or Question Phrase (e.g., 'batch system'):")
+            answer_input = st.text_area("Official Definitive Answer:")
+            submit_btn = st.form_submit_button("Publish Verified Answer")
+            
+            if submit_btn:
+                if keyword_input and answer_input:
+                    save_professor_answer(keyword_input, answer_input)
+                    st.success(f"Successfully published verified answer for '{keyword_input}'!")
                 else:
                     st.warning("Please fill in both fields.")
-
-        for v in db.list_verified_answers(course):
-            with st.container(border=True):
-                left, right = st.columns([6, 1])
-                left.markdown(f"**{v['keyword']}** · _{v['course']}_")
-                left.caption(v["answer"][:300])
-                if right.button("刪除", key=f"del_v_{v['id']}"):
-                    db.delete_verified_answer(v["id"])
-                    st.rerun()
-
-    with tab_handouts:
-        st.subheader("📄 Handout Management")
-        target = st.selectbox("要上傳到哪門課", config.COURSES,
-                              index=0 if course == config.ALL_COURSES else config.COURSES.index(course))
-        files = st.file_uploader("Upload course PDF(s):", type=["pdf"], accept_multiple_files=True)
-        if files and st.button("Process & Index", type="primary"):
-            vs = get_vectorstore()
-            for f in files:
-                with st.spinner(f"處理 {f.name}…"):
-                    try:
-                        n = rag.index_pdf(vs, f.getvalue(), f.name, target)
-                        st.success(f"{f.name}：已建立 {n} 個片段 → {target}")
-                    except Exception as e:
-                        st.error(f"{f.name} 失敗：{e}")
-
-        st.divider()
-        handouts = rag.list_handouts(get_vectorstore(), target)
-        if not handouts:
-            st.caption(f"{target} 目前沒有講義。")
-        for h in handouts:
-            left, right = st.columns([6, 1])
-            left.markdown(f"**{h['source']}** — {h['pages']} 頁，{h['chunks']} 個片段")
-            if right.button("移除", key=f"del_h_{h['file_hash']}"):
-                rag.delete_handout(get_vectorstore(), target, h["file_hash"])
-                st.rerun()
-
-
-if role == "Student":
-    student_view()
-else:
-    professor_view()
