@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     role          TEXT NOT NULL CHECK (role IN ('Student', 'Professor')),
     name          TEXT NOT NULL
+    must_change_password INTEGER NOT NULL DEFAULT 0 """for changing new password acc"""
 );
 CREATE TABLE IF NOT EXISTS queries (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -88,6 +89,16 @@ def owner_label(row) -> str:
 
 
 # ---------------- users ----------------
+def update_user_password(username: str, password_hash: str):
+    """Mengubah password user dan menonaktifkan status wajib ganti password."""
+    with _conn() as c:
+        c.execute(
+            """UPDATE users 
+               SET password_hash = ?, must_change_password = 0 
+               WHERE username = ?""",
+            (password_hash, username),
+        )"""update password for naccount"""
+
 def get_user(username: str):
     with _conn() as c:
         row = c.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
