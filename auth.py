@@ -28,7 +28,7 @@ def authenticate_user(username, password):
     return None
 
 def register_user(username, password, name, role="Student"):
-    """Mendaftarkan akun baru dan menyimpannya ke users.json."""
+    """Register to new user and save it in users.json"""
     init_users_file()
     try:
         with open(USERS_FILE, "r", encoding="utf-8") as f:
