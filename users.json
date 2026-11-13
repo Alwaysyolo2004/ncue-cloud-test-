@@ -1,6 +1,6 @@
 [
   {
-    "__comment__": "=== TEMPAT MEMBUAT AKUN PROFESSOR BARU (Wajib ganti password pertama login) ===",
+    "__comment__": "=== first time for prof, need confirmation password from admin ===",
     "username": "contoh_prof",
     "password": "temp_password_123",
     "role": "Professor",
