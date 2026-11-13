@@ -52,15 +52,15 @@ if not st.session_state.authenticated:
             reg_password = st.text_input("Password:", type="password")
             reg_Cpassword = st.text_input("Confirm Password:", type="password")
             
-            reg_btn = st.form_submit_button("Daftar")
+            reg_btn = st.form_submit_button("Register")
             
             if reg_btn:
                 # 1. Cek apakah ada kolom yang kosong
                 if not reg_name or not reg_username or not reg_password or not reg_Cpassword:
-                    st.warning("Mohon isi semua kolom pendaftaran!")
+                    st.warning("please fill the form")
                 
                 elif reg_password != reg_Cpassword:
-                    st.error("Password tidak cocok! Silakan periksa kembali.")
+                    st.error("password not confirmed, please check the password again")
                 
                 else:
                     success, message = register_user(reg_username, reg_password, reg_name, role="Student")
@@ -75,7 +75,7 @@ if not st.session_state.authenticated:
 # Jika user sudah login, tapi statusnya wajib ganti password (akun dibuat admin)
 if st.session_state.authenticated and st.session_state.user.get("must_change_password", False):
     st.title("🔒 Security Check: Change Temporary Password")
-    st.warning("Halo! Ini adalah login pertama Anda dengan password sementara dari admin. Silakan ubah password Anda demi keamanan.")
+    st.warning("Welcome Professor, please change your account password into your personal preference")
     
     with st.form("change_temp_password_form"):
         new_pass = st.text_input("New Password:", type="password")
